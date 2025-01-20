@@ -74,7 +74,6 @@ impl Document for DioxusDocument {
 
     fn handle_event(&mut self, event: &mut DomEvent) {
         let chain = self.inner.node_chain(event.target);
-        event.composed_path = chain.clone();
 
         set_event_converter(Box::new(NativeConverter {}));
 
@@ -102,7 +101,7 @@ impl Document for DioxusDocument {
                         stop_propagation |= !click_event.propagates();
                     }
 
-                    if stop_propagation && event.bubbles {
+                    if !event.bubbles || stop_propagation {
                         break;
                     }
                 }
@@ -197,7 +196,7 @@ impl Document for DioxusDocument {
                         }
                     }
 
-                    if stop_propagation {
+                    if !event.bubbles || stop_propagation {
                         break;
                     }
                 }
@@ -262,7 +261,7 @@ impl Document for DioxusDocument {
                         }
                     }
 
-                    if stop_propagation {
+                    if !event.bubbles || stop_propagation {
                         break;
                     }
                 }
@@ -272,7 +271,7 @@ impl Document for DioxusDocument {
             DomEventData::Hover => {}
         }
 
-        if !prevent_default || !event.cancelable {
+        if !event.cancelable || !prevent_default {
             self.inner.as_mut().handle_event(event);
         }
     }
@@ -410,22 +409,8 @@ impl DioxusDocument {
     pub fn label_bound_input_element(&self, label_node_id: NodeId) -> Option<(ElementId, NodeId)> {
         let bound_input_elements = self.inner.label_bound_input_elements(label_node_id);
 
-        let root_node_id = self.inner.as_ref().root_node().id;
         // Filter down bound elements to those which have dioxus id
         bound_input_elements.into_iter().find_map(|n| {
-            // Find the first node that is not uninstalled.
-            let mut next_node_id = n.id;
-            loop {
-                let node = &self.inner.as_ref().tree()[next_node_id];
-                if let Some(node_id) = node.parent {
-                    next_node_id = node_id;
-                } else {
-                    break;
-                }
-            }
-            if next_node_id != root_node_id {
-                return None;
-            }
             let target_element_data = n.element_data()?;
             let node_id = n.id;
             let dioxus_id = DioxusDocument::dioxus_id(target_element_data)?;

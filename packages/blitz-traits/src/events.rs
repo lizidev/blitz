@@ -12,8 +12,6 @@ pub struct DomEvent {
     pub bubbles: bool,
     /// which is true if the event can be canceled.
     pub cancelable: bool,
-    pub current_target: usize,
-    pub composed_path: Vec<usize>,
 
     pub data: DomEventData,
     pub request_redraw: bool,
@@ -25,8 +23,6 @@ impl DomEvent {
             target,
             bubbles: data.bubbles(),
             cancelable: data.cancelable(),
-            current_target: target,
-            composed_path: Vec::new(),
             data,
             request_redraw: false,
         }
@@ -35,10 +31,6 @@ impl DomEvent {
     /// Returns the name of the event ("click", "mouseover", "keypress", etc)
     pub fn name(&self) -> &'static str {
         self.data.name()
-    }
-
-    pub fn composed_path(&self) -> &Vec<usize> {
-        &self.composed_path
     }
 }
 
