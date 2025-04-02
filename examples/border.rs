@@ -18,6 +18,10 @@ fn app() -> Element {
         div { class: "colorful", id: "c", "    Dioxus12312312312321\n\n\n\n\n\n\n\n        hi " }
         div { class: "colorful", id: "d", "    Dioxus12312312312321\n\n\n\n\n\n\n\n        hi " }
         div { class: "colorful", id: "e", "    Dioxus12312312312321\n\n\n\n\n\n\n\n        hi " }
+
+        div { id: "transparent-border-box", "transparent box-sizing: border-box" }
+        div { id: "transparent", "transparent" }
+        div { id: "transparent-clip-padding-box", "transparent background-clip: padding-box" }
     }
 }
 
@@ -78,7 +82,23 @@ const CSS: &str = r#"
     border-top-color: #F01;
     border-bottom-color: #0f0;
 }
-
+#transparent {
+    width: 300px;
+    border: 20px solid transparent;
+    background-color: red;
+}
+#transparent-border-box {
+    width: 300px;
+    border: 20px solid transparent;
+    background-color: red;
+    box-sizing: border-box;
+}
+#transparent-clip-padding-box {
+    width: 300px;
+    border: 20px solid transparent;
+    background-color: red;
+    background-clip: padding-box;
+}
 "#;
 
 // border-radius: 1px;

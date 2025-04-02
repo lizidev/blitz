@@ -200,6 +200,18 @@ impl ElementFrame {
         path
     }
 
+    pub fn frame_border(&self) -> BezPath {
+        let mut path = BezPath::new();
+        self.shape(&mut path, ArcSide::Outer, Direction::Clockwise);
+        path
+    }
+
+    pub fn frame_padding(&self) -> BezPath {
+        let mut path = BezPath::new();
+        self.shape(&mut path, ArcSide::Inner, Direction::Clockwise);
+        path
+    }
+
     fn shape(&self, path: &mut BezPath, line: ArcSide, direction: Direction) {
         use Corner::*;
 
