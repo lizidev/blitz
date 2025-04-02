@@ -1044,7 +1044,7 @@ impl ElementCx<'_> {
         let background_clip_path = match background_clip {
             BorderBox => self.frame.frame_border(),
             PaddingBox => self.frame.frame_padding(),
-            ContentBox => todo!(),
+            ContentBox => self.frame.frame_content(),
         };
 
         CLIPS_WANTED.fetch_add(1, atomic::Ordering::SeqCst);
@@ -1568,7 +1568,8 @@ impl ElementCx<'_> {
                 .as_srgb_color(),
         };
 
-        if color != Color::TRANSPARENT {
+        let alpha = color.components[3];
+        if alpha != 0.0 {
             sb.fill(Fill::NonZero, self.transform, color, None, &path);
         }
     }

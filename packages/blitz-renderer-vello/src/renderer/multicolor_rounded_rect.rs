@@ -24,6 +24,11 @@ pub struct ElementFrame {
     pub content_box: Rect,
     pub outline_width: f64,
 
+    pub padding_top_width: f64,
+    pub padding_left_width: f64,
+    pub padding_right_width: f64,
+    pub padding_bottom_width: f64,
+
     pub border_top_width: f64,
     pub border_left_width: f64,
     pub border_right_width: f64,
@@ -115,6 +120,10 @@ impl ElementFrame {
             border_box,
             content_box,
             outline_width,
+            padding_top_width: padding.top,
+            padding_left_width: padding.left,
+            padding_right_width: padding.right,
+            padding_bottom_width: padding.bottom,
             border_top_width: border.top,
             border_left_width: border.left,
             border_right_width: border.right,
@@ -212,6 +221,12 @@ impl ElementFrame {
         path
     }
 
+    pub fn frame_content(&self) -> BezPath {
+        let mut path = BezPath::new();
+        self.shape(&mut path, ArcSide::Content, Direction::Clockwise);
+        path
+    }
+
     fn shape(&self, path: &mut BezPath, line: ArcSide, direction: Direction) {
         use Corner::*;
 
@@ -266,24 +281,40 @@ impl ElementFrame {
 
         let (x, y) = match corner {
             Corner::TopLeft => match side {
+                ArcSide::Content => (
+                    x0 + self.border_left_width + self.padding_left_width,
+                    y0 + self.border_top_width + self.padding_top_width,
+                ),
                 ArcSide::Inner => (x0 + self.border_left_width, y0 + self.border_top_width),
                 ArcSide::Outer => (x0, y0),
                 ArcSide::Outline => (x0 - self.outline_width, y0 - self.outline_width),
                 ArcSide::Middle => unimplemented!(),
             },
             Corner::TopRight => match side {
+                ArcSide::Content => (
+                    x1 - self.border_left_width - self.padding_left_width,
+                    y0 + self.border_top_width + self.padding_top_width,
+                ),
                 ArcSide::Inner => (x1 - self.border_right_width, y0 + self.border_top_width),
                 ArcSide::Outer => (x1, y0),
                 ArcSide::Outline => (x1 + self.outline_width, y0 - self.outline_width),
                 ArcSide::Middle => unimplemented!(),
             },
             Corner::BottomRight => match side {
+                ArcSide::Content => (
+                    x1 - self.border_right_width - self.padding_right_width,
+                    y1 - self.border_bottom_width - self.padding_bottom_width,
+                ),
                 ArcSide::Inner => (x1 - self.border_right_width, y1 - self.border_bottom_width),
                 ArcSide::Outer => (x1, y1),
                 ArcSide::Outline => (x1 + self.outline_width, y1 + self.outline_width),
                 ArcSide::Middle => unimplemented!(),
             },
             Corner::BottomLeft => match side {
+                ArcSide::Content => (
+                    x0 + self.border_left_width + self.padding_left_width,
+                    y1 - self.border_bottom_width - self.padding_bottom_width,
+                ),
                 ArcSide::Inner => (x0 + self.border_left_width, y1 - self.border_bottom_width),
                 ArcSide::Outer => (x0, y1),
                 ArcSide::Outline => (x0 - self.outline_width, y1 + self.outline_width),
@@ -512,6 +543,7 @@ impl ElementFrame {
         };
 
         let radii = match side {
+            Content => todo!(),
             Outer => outer,
             Outline => match corner {
                 TopLeft => (border_top_left_radius_width + outline_width, border_top_left_radius_height + outline_width),
@@ -568,13 +600,13 @@ pub enum Edge {
 ///    |    |    *----------------------------------------------*    |   |  <--- ArcSide::Middle
 ///    |    |    |                    Border Inner              |    |   |
 ///    |    |    |    *------------------------------------*    |    |   |  <--- ArcSide::Inner
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
-///    |    |    |    |                                    |    |    |   |
+///    |    |    |    |               Padding              |    |    |   |
+///    |    |    |    |    *--------------------------*    |    |    |   |  <--- ArcSide::Content
+///    |    |    |    |    |                          |    |    |    |   |
+///    |    |    |    |    |                          |    |    |    |   |
+///    |    |    |    |    |                          |    |    |    |   |
+///    |    |    |    |    |                          |    |    |    |   |
+///    |    |    |    |    *--------------------------*    |    |    |   |
 ///    |    |    |    |                                    |    |    |   |
 ///    |    |    |    *------------------------------------*    |    |   |
 ///    |    |    |                                              |    |   |
@@ -599,6 +631,7 @@ enum ArcSide {
     #[allow(unused)]
     Middle,
     Inner,
+    Content,
 }
 
 #[derive(Debug, Clone, Copy)]
