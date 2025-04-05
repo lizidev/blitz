@@ -19,9 +19,10 @@ fn app() -> Element {
         div { class: "colorful", id: "d", "    Dioxus12312312312321\n\n\n\n\n\n\n\n        hi " }
         div { class: "colorful", id: "e", "    Dioxus12312312312321\n\n\n\n\n\n\n\n        hi " }
 
-        div { id: "transparent-border-box", "transparent box-sizing: border-box" }
-        div { id: "transparent", "transparent" }
-        div { id: "transparent-clip-padding-box", "transparent background-clip: padding-box" }
+        div { id: "border-box", "box-sizing: border-box" }
+        div { id: "clip-border-box", "background-clip: border-box" }
+        div { id: "clip-padding-box", "background-clip: padding-box" }
+        div { id: "clip-content-box", "background-clip: content-box" }
     }
 }
 
@@ -82,22 +83,29 @@ const CSS: &str = r#"
     border-top-color: #F01;
     border-bottom-color: #0f0;
 }
-#transparent {
-    width: 300px;
-    border: 20px solid transparent;
-    background-color: red;
-}
-#transparent-border-box {
-    width: 300px;
+#border-box {
+    padding: 20px;
     border: 20px solid transparent;
     background-color: red;
     box-sizing: border-box;
 }
-#transparent-clip-padding-box {
-    width: 300px;
+#clip-border-box {
+    padding: 20px;
+    border: 20px solid transparent;
+    background-color: red;
+    background-clip: border-box;
+}
+#clip-padding-box {
+    padding: 20px;
     border: 20px solid transparent;
     background-color: red;
     background-clip: padding-box;
+}
+#clip-content-box {
+    padding: 20px;
+    border: 20px solid transparent;
+    background-color: red;
+    background-clip: content-box;
 }
 "#;
 

@@ -209,18 +209,21 @@ impl ElementFrame {
         path
     }
 
+    /// Construct a bezpath drawing the frame border
     pub fn frame_border(&self) -> BezPath {
         let mut path = BezPath::new();
         self.shape(&mut path, ArcSide::Outer, Direction::Clockwise);
         path
     }
 
+    /// Construct a bezpath drawing the frame padding
     pub fn frame_padding(&self) -> BezPath {
         let mut path = BezPath::new();
         self.shape(&mut path, ArcSide::Inner, Direction::Clockwise);
         path
     }
 
+    /// Construct a bezpath drawing the frame content
     pub fn frame_content(&self) -> BezPath {
         let mut path = BezPath::new();
         self.shape(&mut path, ArcSide::Content, Direction::Clockwise);
@@ -512,6 +515,10 @@ impl ElementFrame {
         use {Corner::*, ArcSide::*};
         let ElementFrame {
             border_box: rect,
+            padding_top_width,
+            padding_left_width,
+            padding_right_width,
+            padding_bottom_width,
             border_top_width,
             border_left_width,
             border_right_width,
@@ -543,7 +550,6 @@ impl ElementFrame {
         };
 
         let radii = match side {
-            Content => todo!(),
             Outer => outer,
             Outline => match corner {
                 TopLeft => (border_top_left_radius_width + outline_width, border_top_left_radius_height + outline_width),
@@ -557,6 +563,12 @@ impl ElementFrame {
                 TopRight => (border_top_right_radius_width - border_right_width, border_top_right_radius_height - border_top_width),
                 BottomRight => (border_bottom_right_radius_width - border_right_width, border_bottom_right_radius_height - border_bottom_width),
                 BottomLeft => (border_bottom_left_radius_width - border_left_width, border_bottom_left_radius_height - border_bottom_width),
+            },
+            Content => match corner {
+                TopLeft => (border_top_left_radius_width - border_left_width - padding_left_width, border_top_left_radius_height - border_top_width - padding_top_width),
+                TopRight => (border_top_right_radius_width - border_right_width - padding_right_width, border_top_right_radius_height - border_top_width - padding_top_width),
+                BottomRight => (border_bottom_right_radius_width - border_right_width - padding_right_width, border_bottom_right_radius_height - border_bottom_width - padding_bottom_width),
+                BottomLeft => (border_bottom_left_radius_width - border_left_width - padding_left_width, border_bottom_left_radius_height - border_bottom_width - padding_bottom_width),
             },
         };
 
