@@ -580,7 +580,6 @@ impl VelloSceneGenerator<'_> {
     }
 }
 
-#[cfg(feature = "svg")]
 fn compute_background_size(
     style: &ComputedValues,
     container_w: f32,
@@ -917,8 +916,21 @@ impl ElementCx<'_> {
         scene.append(&fragment, Some(transform));
     }
 
-    #[cfg(feature = "svg")]
-    fn draw_svg_bg_image(&self, scene: &mut Scene, idx: usize) {
+    fn draw_image(&self, scene: &mut Scene) {
+        let width = self.frame.content_box.width() as u32;
+        let height = self.frame.content_box.height() as u32;
+        let x = self.frame.content_box.origin().x;
+        let y = self.frame.content_box.origin().y;
+        let transform = self.transform.then_translate(Vec2 { x, y });
+
+        if let Some(image_data) = self.element.raster_image_data() {
+            ensure_resized_image(image_data, width, height);
+            let resized_image = image_data.resized_image.borrow();
+            scene.draw_image(resized_image.as_ref().unwrap(), transform);
+        }
+    }
+
+    fn draw_bg_image(&self, scene: &mut Scene, idx: usize, clip_area: Rect) {
         use style::{Zero as _, values::computed::Length};
 
         let bg_image = self.element.background_images.get(idx);
@@ -926,27 +938,38 @@ impl ElementCx<'_> {
         let Some(Some(bg_image)) = bg_image.as_ref() else {
             return;
         };
-        let ImageData::Svg(svg) = &bg_image.image else {
-            return;
+
+        let image_size = match &bg_image.image {
+            ImageData::Raster(image_data) => kurbo::Size::new(
+                image_data.image.width() as f64,
+                image_data.image.height() as f64,
+            ),
+            #[cfg(feature = "svg")]
+            ImageData::Svg(svg) => {
+                let size = svg.size();
+                kurbo::Size::new(size.width() as f64, size.height() as f64)
+            }
+            _ => {
+                return;
+            }
         };
 
-        let frame_w = self.frame.padding_box.width() as f32;
-        let frame_h = self.frame.padding_box.height() as f32;
+        let frame_w = clip_area.width() as f32;
+        let frame_h = clip_area.height() as f32;
 
-        let svg_size = svg.size();
         let bg_size = compute_background_size(
             &self.style,
             frame_w,
             frame_h,
             idx,
-            svg_size.width() / self.scale as f32,
-            svg_size.height() / self.scale as f32,
+            (image_size.width / self.scale) as f32,
+            (image_size.height / self.scale) as f32,
             self.scale as f32,
         );
         let bg_size = bg_size * self.scale;
 
-        let x_ratio = bg_size.width as f64 / svg_size.width() as f64;
-        let y_ratio = bg_size.height as f64 / svg_size.height() as f64;
+        let x_ratio = bg_size.width / image_size.width;
+        let y_ratio = bg_size.height / image_size.height;
 
         let bg_pos_x = self
             .style
@@ -969,46 +992,27 @@ impl ElementCx<'_> {
             .resolve(Length::new(frame_h - bg_size.height as f32))
             .px() as f64;
 
-        let transform = Affine::translate((
-            (self.pos.x * self.scale) + bg_pos_x,
-            (self.pos.y * self.scale) + bg_pos_y,
-        ))
-        .pre_scale_non_uniform(x_ratio, y_ratio);
+        let transform = self
+            .transform
+            .then_translate(Vec2 {
+                x: (clip_area.x0 * self.scale) + bg_pos_x,
+                y: (clip_area.y0 * self.scale) + bg_pos_y,
+            })
+            .pre_scale_non_uniform(x_ratio, y_ratio);
 
-        let fragment = vello_svg::render_tree(svg);
-        scene.append(&fragment, Some(transform));
-    }
-
-    fn draw_image(&self, scene: &mut Scene) {
-        let width = self.frame.content_box.width() as u32;
-        let height = self.frame.content_box.height() as u32;
-        let x = self.frame.content_box.origin().x;
-        let y = self.frame.content_box.origin().y;
-        let transform = self.transform.then_translate(Vec2 { x, y });
-
-        if let Some(image_data) = self.element.raster_image_data() {
-            ensure_resized_image(image_data, width, height);
-            let resized_image = image_data.resized_image.borrow();
-            scene.draw_image(resized_image.as_ref().unwrap(), transform);
-        }
-    }
-
-    fn draw_raster_bg_image(&self, scene: &mut Scene, idx: usize) {
-        let width = self.frame.padding_box.width() as u32;
-        let height = self.frame.padding_box.height() as u32;
-        let x = self.frame.content_box.origin().x;
-        let y = self.frame.content_box.origin().y;
-        let transform = self.transform.then_translate(Vec2 { x, y });
-
-        let bg_image = self.element.background_images.get(idx);
-
-        if let Some(Some(bg_image)) = bg_image.as_ref() {
-            if let ImageData::Raster(image_data) = &bg_image.image {
-                ensure_resized_image(image_data, width, height);
+        match &bg_image.image {
+            ImageData::Raster(image_data) => {
+                ensure_resized_image(image_data, frame_w as u32, frame_h as u32);
                 let resized_image = image_data.resized_image.borrow();
                 scene.draw_image(resized_image.as_ref().unwrap(), transform);
             }
-        }
+            #[cfg(feature = "svg")]
+            ImageData::Svg(svg) => {
+                let fragment = vello_svg::render_tree(svg);
+                scene.append(&fragment, Some(transform));
+            }
+            ImageData::None => unreachable!(),
+        };
     }
 
     fn stroke_devtools(&self, scene: &mut Scene) {
@@ -1041,10 +1045,10 @@ impl ElementCx<'_> {
 
         let segments = &self.style.get_background().background_clip.0;
         let background_clip = segments.iter().next().cloned().unwrap_or(BorderBox);
-        let background_clip_path = match background_clip {
-            BorderBox => self.frame.frame_border(),
-            PaddingBox => self.frame.frame_padding(),
-            ContentBox => self.frame.frame_content(),
+        let (background_clip_area, background_clip_path) = match background_clip {
+            BorderBox => (self.frame.border_box, self.frame.frame_border()),
+            PaddingBox => (self.frame.padding_box, self.frame.frame_padding()),
+            ContentBox => (self.frame.content_box, self.frame.frame_content()),
         };
 
         CLIPS_WANTED.fetch_add(1, atomic::Ordering::SeqCst);
@@ -1066,9 +1070,7 @@ impl ElementCx<'_> {
                 }
                 Gradient(gradient) => self.draw_gradient_frame(scene, gradient),
                 Url(_) => {
-                    self.draw_raster_bg_image(scene, idx);
-                    #[cfg(feature = "svg")]
-                    self.draw_svg_bg_image(scene, idx);
+                    self.draw_bg_image(scene, idx, background_clip_area);
                 }
                 PaintWorklet(_) => todo!("Implement background drawing for Image::PaintWorklet"),
                 CrossFade(_) => todo!("Implement background drawing for Image::CrossFade"),
