@@ -98,10 +98,10 @@ impl ElementFrame {
 
         // Correct the border radii if they are too big if two border radii would intersect, then we need to shrink
         // ALL border radii by the same factor such that they do not
-        let top_overlap_factor = padding_box.width() / (border_top_left_radius_width + border_top_right_radius_width);
-        let bottom_overlap_factor = padding_box.width() / (border_bottom_left_radius_width + border_bottom_right_radius_width);
-        let left_overlap_factor = padding_box.height() / (border_top_left_radius_height + border_bottom_left_radius_height);
-        let right_overlap_factor = padding_box.height() / (border_top_right_radius_height + border_bottom_right_radius_height);
+        let top_overlap_factor = border_box.width() / (border_top_left_radius_width + border_top_right_radius_width);
+        let bottom_overlap_factor = border_box.width() / (border_bottom_left_radius_width + border_bottom_right_radius_width);
+        let left_overlap_factor = border_box.height() / (border_top_left_radius_height + border_bottom_left_radius_height);
+        let right_overlap_factor = border_box.height() / (border_top_right_radius_height + border_bottom_right_radius_height);
 
         let min_factor = top_overlap_factor.min(bottom_overlap_factor).min(left_overlap_factor).min(right_overlap_factor).min(1.0);
         if min_factor < 1.0 {
@@ -160,7 +160,7 @@ impl ElementFrame {
 
         // 1. First corner
         // if the radius is bigger than the border, we need to draw the inner arc to fill in the gap
-        if self.is_sharp(c0) {
+        if self.is_sharp(c0, Outer) {
             path.move_to(self.corner(c0, Inner));
             path.line_to(self.corner(c0, Outer));
         } else {
@@ -172,7 +172,7 @@ impl ElementFrame {
         }
 
         // 2. Second corner
-        if self.is_sharp(c1) {
+        if self.is_sharp(c1, Outer) {
             path.line_to(self.corner(c1, Outer));
             path.line_to(self.corner(c1, Inner));
         } else {
@@ -239,7 +239,7 @@ impl ElementFrame {
         };
 
         for corner in route {
-            if self.is_sharp(corner) {
+            if self.is_sharp(corner, line) {
                 path.insert_point(self.corner(corner, line));
             } else {
                 path.insert_arc(self.full_arc(corner, line, direction));
@@ -261,7 +261,7 @@ impl ElementFrame {
             path.insert_point(self.shadow_clip_corner(corner, 100.0));
         }
 
-        if self.is_sharp(TopLeft) {
+        if self.is_sharp(TopLeft, ArcSide::Outer) {
             path.move_to(self.corner(TopLeft, ArcSide::Outer));
         } else {
             const TOLERANCE: f64 = 0.1;
@@ -271,7 +271,7 @@ impl ElementFrame {
         }
 
         for corner in [/*TopLeft, */ BottomLeft, BottomRight, TopRight] {
-            if self.is_sharp(corner) {
+            if self.is_sharp(corner, ArcSide::Outer) {
                 path.insert_point(self.corner(corner, ArcSide::Outer));
             } else {
                 path.insert_arc(self.full_arc(corner, ArcSide::Outer, Direction::Anticlockwise));
@@ -489,24 +489,97 @@ impl ElementFrame {
     }
 
     /// Check if a corner is sharp (IE the absolute radius is 0)
-    fn is_sharp(&self, corner: Corner) -> bool {
-        match corner {
-            Corner::TopLeft => {
+    fn is_sharp(&self, corner: Corner, side: ArcSide) -> bool {
+        use ArcSide::*;
+        use Corner::*;
+
+        let is_sharp = match corner {
+            TopLeft => {
                 self.border_top_left_radius_width == 0.0
                     || self.border_top_left_radius_height == 0.0
             }
-            Corner::TopRight => {
+            TopRight => {
                 self.border_top_right_radius_width == 0.0
                     || self.border_top_right_radius_height == 0.0
             }
-            Corner::BottomRight => {
+            BottomRight => {
                 self.border_bottom_right_radius_width == 0.0
                     || self.border_bottom_right_radius_height == 0.0
             }
-            Corner::BottomLeft => {
+            BottomLeft => {
                 self.border_bottom_left_radius_width == 0.0
                     || self.border_bottom_left_radius_height == 0.0
             }
+        };
+
+        if is_sharp {
+            return true;
+        }
+
+        if side == Inner {
+            match corner {
+                TopLeft => {
+                    self.border_top_left_radius_width - self.border_left_width <= 0.0
+                        || self.border_top_left_radius_height - self.border_top_width <= 0.0
+                }
+                TopRight => {
+                    self.border_top_right_radius_width - self.border_right_width <= 0.0
+                        || self.border_top_right_radius_height - self.border_top_width <= 0.0
+                }
+                BottomRight => {
+                    self.border_bottom_right_radius_width - self.border_right_width <= 0.0
+                        || self.border_bottom_right_radius_height - self.border_bottom_width <= 0.0
+                }
+                BottomLeft => {
+                    self.border_bottom_left_radius_width - self.border_left_width <= 0.0
+                        || self.border_bottom_left_radius_height - self.border_bottom_width <= 0.0
+                }
+            }
+        } else if side == Content {
+            match corner {
+                TopLeft => {
+                    self.border_top_left_radius_width
+                        - self.border_left_width
+                        - self.padding_left_width
+                        <= 0.0
+                        || self.border_top_left_radius_height
+                            - self.border_top_width
+                            - self.padding_top_width
+                            <= 0.0
+                }
+                TopRight => {
+                    self.border_top_right_radius_width
+                        - self.border_right_width
+                        - self.padding_right_width
+                        <= 0.0
+                        || self.border_top_right_radius_height
+                            - self.border_top_width
+                            - self.padding_top_width
+                            <= 0.0
+                }
+                BottomRight => {
+                    self.border_bottom_right_radius_width
+                        - self.border_right_width
+                        - self.padding_right_width
+                        <= 0.0
+                        || self.border_bottom_right_radius_height
+                            - self.border_bottom_width
+                            - self.padding_bottom_width
+                            <= 0.0
+                }
+                BottomLeft => {
+                    self.border_bottom_left_radius_width
+                        - self.border_left_width
+                        - self.padding_left_width
+                        <= 0.0
+                        || self.border_bottom_left_radius_height
+                            - self.border_bottom_width
+                            - self.padding_bottom_width
+                            <= 0.0
+                }
+            }
+        } else {
+            is_sharp
         }
     }
 
@@ -636,7 +709,7 @@ enum Corner {
     BottomRight,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum ArcSide {
     Outline,
     Outer,

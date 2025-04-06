@@ -88,24 +88,28 @@ const CSS: &str = r#"
     border: 20px solid transparent;
     background-color: red;
     box-sizing: border-box;
+    border-radius: 10px;
 }
 #clip-border-box {
     padding: 20px;
     border: 20px solid transparent;
     background-color: red;
     background-clip: border-box;
+    border-radius: 10px;
 }
 #clip-padding-box {
     padding: 20px;
     border: 20px solid transparent;
     background-color: red;
     background-clip: padding-box;
+    border-radius: 30px;
 }
 #clip-content-box {
     padding: 20px;
     border: 20px solid transparent;
     background-color: red;
     background-clip: content-box;
+    border-radius: 50px;
 }
 "#;
 
