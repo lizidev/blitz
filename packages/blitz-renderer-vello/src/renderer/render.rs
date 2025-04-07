@@ -19,8 +19,11 @@ use style::{
     dom::TElement,
     properties::{
         ComputedValues,
-        generated::longhands::background_clip::single_value::computed_value::T as StyloBackgroundClip,
-        generated::longhands::visibility::computed_value::T as StyloVisibility,
+        generated::longhands::{
+            background_clip::single_value::computed_value::T as StyloBackgroundClip,
+            background_origin::single_value::computed_value::T as StyloBackgroundOrigin,
+            visibility::computed_value::T as StyloVisibility,
+        },
         style_structs::{Font, Outline},
     },
     values::{
@@ -930,7 +933,7 @@ impl ElementCx<'_> {
         }
     }
 
-    fn draw_bg_image(&self, scene: &mut Scene, idx: usize, clip_area: Rect) {
+    fn draw_bg_image(&self, scene: &mut Scene, idx: usize) {
         use style::{Zero as _, values::computed::Length};
 
         let bg_image = self.element.background_images.get(idx);
@@ -954,8 +957,33 @@ impl ElementCx<'_> {
             }
         };
 
-        let frame_w = clip_area.width() as f32;
-        let frame_h = clip_area.height() as f32;
+        let background_origin = self
+            .style
+            .get_background()
+            .background_origin
+            .0
+            .get(idx)
+            .cloned()
+            .unwrap_or(StyloBackgroundOrigin::PaddingBox);
+
+        let origin_rect = match background_origin {
+            StyloBackgroundOrigin::BorderBox => self.frame.border_box,
+            StyloBackgroundOrigin::PaddingBox => Rect {
+                x0: self.frame.padding_box.x0,
+                y0: self.frame.padding_box.y0,
+                x1: self.frame.border_box.x1,
+                y1: self.frame.border_box.y1,
+            },
+            StyloBackgroundOrigin::ContentBox => Rect {
+                x0: self.frame.content_box.x0,
+                y0: self.frame.content_box.y0,
+                x1: self.frame.border_box.x1,
+                y1: self.frame.border_box.y1,
+            },
+        };
+
+        let frame_w = origin_rect.width() as f32;
+        let frame_h = origin_rect.height() as f32;
 
         let bg_size = compute_background_size(
             &self.style,
@@ -995,14 +1023,14 @@ impl ElementCx<'_> {
         let transform = self
             .transform
             .then_translate(Vec2 {
-                x: (clip_area.x0 * self.scale) + bg_pos_x,
-                y: (clip_area.y0 * self.scale) + bg_pos_y,
+                x: (origin_rect.x0 * self.scale) + bg_pos_x,
+                y: (origin_rect.y0 * self.scale) + bg_pos_y,
             })
             .pre_scale_non_uniform(x_ratio, y_ratio);
 
         match &bg_image.image {
             ImageData::Raster(image_data) => {
-                ensure_resized_image(image_data, frame_w as u32, frame_h as u32);
+                ensure_resized_image(image_data, bg_size.width as u32, bg_size.height as u32);
                 let resized_image = image_data.resized_image.borrow();
                 scene.draw_image(resized_image.as_ref().unwrap(), transform);
             }
@@ -1045,10 +1073,10 @@ impl ElementCx<'_> {
 
         let segments = &self.style.get_background().background_clip.0;
         let background_clip = segments.iter().next().cloned().unwrap_or(BorderBox);
-        let (background_clip_area, background_clip_path) = match background_clip {
-            BorderBox => (self.frame.border_box, self.frame.frame_border()),
-            PaddingBox => (self.frame.padding_box, self.frame.frame_padding()),
-            ContentBox => (self.frame.content_box, self.frame.frame_content()),
+        let background_clip_path = match background_clip {
+            BorderBox => self.frame.frame_border(),
+            PaddingBox => self.frame.frame_padding(),
+            ContentBox => self.frame.frame_content(),
         };
 
         CLIPS_WANTED.fetch_add(1, atomic::Ordering::SeqCst);
@@ -1070,7 +1098,7 @@ impl ElementCx<'_> {
                 }
                 Gradient(gradient) => self.draw_gradient_frame(scene, gradient),
                 Url(_) => {
-                    self.draw_bg_image(scene, idx, background_clip_area);
+                    self.draw_bg_image(scene, idx);
                 }
                 PaintWorklet(_) => todo!("Implement background drawing for Image::PaintWorklet"),
                 CrossFade(_) => todo!("Implement background drawing for Image::CrossFade"),
