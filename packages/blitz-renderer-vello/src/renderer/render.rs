@@ -64,6 +64,23 @@ use vello::{
 use vello_svg::usvg;
 
 type GradientItem<T> = GenericGradientItem<GenericColor<Percentage>, T>;
+type LinearGradient<'a> = (
+    &'a LineDirection,
+    &'a [GradientItem<LengthPercentage>],
+    GradientFlags,
+);
+type RadialGradient<'a> = (
+    &'a EndingShape<NonNegative<CSSPixelLength>, NonNegative<LengthPercentage>>,
+    &'a GenericPosition<LengthPercentage, LengthPercentage>,
+    &'a OwnedSlice<GenericGradientItem<GenericColor<Percentage>, LengthPercentage>>,
+    GradientFlags,
+);
+type ConicGradient<'a> = (
+    &'a Angle,
+    &'a GenericPosition<LengthPercentage, LengthPercentage>,
+    &'a OwnedSlice<GenericGradientItem<GenericColor<Percentage>, AngleOrPercentage>>,
+    GradientFlags,
+);
 
 const CLIP_LIMIT: usize = 1024;
 static CLIPS_USED: AtomicUsize = AtomicUsize::new(0);
@@ -1165,7 +1182,6 @@ impl ElementCx<'_> {
 
         let bg_size = bg_size * self.scale;
         let origin_rect = origin_rect.with_size(bg_size);
-        let origin_path = origin_rect.to_path(0.1);
 
         let bg_pos_x = self
             .style
@@ -1199,11 +1215,8 @@ impl ElementCx<'_> {
                 ..
             } => self.draw_linear_gradient(
                 scene,
-                direction,
-                items,
-                *flags,
+                (direction, items, *flags),
                 origin_rect,
-                &origin_path,
                 bg_position,
             ),
             GenericGradient::Radial {
@@ -1215,12 +1228,8 @@ impl ElementCx<'_> {
                 ..
             } => self.draw_radial_gradient(
                 scene,
-                shape,
-                position,
-                items,
-                *flags,
+                (shape, position, items, *flags),
                 origin_rect,
-                &origin_path,
                 bg_position,
             ),
             GenericGradient::Conic {
@@ -1231,12 +1240,8 @@ impl ElementCx<'_> {
                 ..
             } => self.draw_conic_gradient(
                 scene,
-                angle,
-                position,
-                items,
-                *flags,
+                (angle, position, items, *flags),
                 origin_rect,
-                &origin_path,
                 bg_position,
             ),
         };
@@ -1245,13 +1250,11 @@ impl ElementCx<'_> {
     fn draw_linear_gradient(
         &self,
         scene: &mut Scene,
-        direction: &LineDirection,
-        items: &[GradientItem<LengthPercentage>],
-        flags: GradientFlags,
+        gradient: LinearGradient,
         origin_rect: Rect,
-        shape: &BezPath,
         bg_position: Point,
     ) {
+        let (direction, items, flags) = gradient;
         let bb = self.frame.border_box.bounding_box();
         let current_color = self.style.clone_color();
 
@@ -1323,7 +1326,13 @@ impl ElementCx<'_> {
             y: bg_position.y,
         });
         let brush = peniko::BrushRef::Gradient(&gradient);
-        scene.fill(peniko::Fill::NonZero, transform, brush, None, &shape);
+        scene.fill(
+            peniko::Fill::NonZero,
+            transform,
+            brush,
+            None,
+            &origin_rect.to_path(0.1),
+        );
     }
 
     #[inline]
@@ -1772,14 +1781,11 @@ impl ElementCx<'_> {
     fn draw_radial_gradient(
         &self,
         scene: &mut Scene,
-        shape: &EndingShape<NonNegative<CSSPixelLength>, NonNegative<LengthPercentage>>,
-        position: &GenericPosition<LengthPercentage, LengthPercentage>,
-        items: &OwnedSlice<GenericGradientItem<GenericColor<Percentage>, LengthPercentage>>,
-        flags: GradientFlags,
+        gradient: RadialGradient,
         origin_rect: Rect,
-        bez_path: &BezPath,
         bg_position: Point,
     ) {
+        let (shape, position, items, flags) = gradient;
         let rect = origin_rect;
         let repeating = flags.contains(GradientFlags::REPEATING);
         let current_color = self.style.clone_color();
@@ -1893,21 +1899,18 @@ impl ElementCx<'_> {
             transform,
             brush,
             gradient_transform,
-            bez_path,
+            &origin_rect.to_path(0.1),
         );
     }
 
     fn draw_conic_gradient(
         &self,
         scene: &mut Scene,
-        angle: &Angle,
-        position: &GenericPosition<LengthPercentage, LengthPercentage>,
-        items: &OwnedSlice<GenericGradientItem<GenericColor<Percentage>, AngleOrPercentage>>,
-        flags: GradientFlags,
+        gradient: ConicGradient,
         origin_rect: Rect,
-        bez_path: &BezPath,
         bg_position: Point,
     ) {
+        let (angle, position, items, flags) = gradient;
         let rect = origin_rect;
         let current_color = self.style.clone_color();
 
@@ -1948,7 +1951,7 @@ impl ElementCx<'_> {
                 Affine::rotate(angle.radians() as f64 - std::f64::consts::PI / 2.0)
                     .then_translate(self.get_translation(position, rect)),
             ),
-            &bez_path,
+            &origin_rect.to_path(0.1),
         );
     }
 
