@@ -605,10 +605,9 @@ fn compute_background_size(
     container_w: f32,
     container_h: f32,
     bg_idx: usize,
-    bg_w: Option<f32>,
-    bg_h: Option<f32>,
+    mode: BackgroundSizeComputeMode,
     scale: f32,
-) -> kurbo::Size {
+) -> (Point, kurbo::Size) {
     use style::values::computed::{BackgroundSize, Length};
     use style::values::generics::length::GenericLengthPercentageOrAuto as Lpa;
 
@@ -620,6 +619,8 @@ fn compute_background_size(
         .cloned()
         .unwrap_or(BackgroundSize::auto());
 
+    let mut offset = Point::new(0.0, 0.0);
+
     let (width, height): (f32, f32) = match bg_size {
         BackgroundSize::ExplicitSize { width, height } => {
             let width = width.map(|w| w.0.resolve(Length::new(container_w)));
@@ -627,35 +628,72 @@ fn compute_background_size(
 
             match (width, height) {
                 (Lpa::LengthPercentage(width), Lpa::LengthPercentage(height)) => {
-                    (width.px(), height.px())
-                }
-                (Lpa::LengthPercentage(width), Lpa::Auto) => {
-                    let height = if let (Some(bg_w), Some(bg_h)) = (bg_w, bg_h) {
-                        (width.px() / bg_w) * bg_h
-                    } else {
-                        container_h
-                    };
-                    (width.px(), height)
-                }
-                (Lpa::Auto, Lpa::LengthPercentage(height)) => {
-                    let width = if let (Some(bg_w), Some(bg_h)) = (bg_w, bg_h) {
-                        (height.px() / bg_h) * bg_w
-                    } else {
-                        container_w
-                    };
-                    (width, height.px())
-                }
-                (Lpa::Auto, Lpa::Auto) => {
-                    if let (Some(bg_w), Some(bg_h)) = (bg_w, bg_h) {
-                        (bg_w * scale, bg_h * scale)
-                    } else {
-                        (container_w, container_h)
+                    let width = width.px();
+                    let height = height.px();
+                    match mode {
+                        BackgroundSizeComputeMode::Auto => (width, height),
+                        BackgroundSizeComputeMode::Ratio(ratio) => {
+                            let bg_width = height * ratio;
+                            let bg_height = width / ratio;
+
+                            if bg_width <= width {
+                                offset.x = (width - bg_width) as f64;
+                                (bg_width, height)
+                            } else if bg_height <= height {
+                                offset.y = (height - bg_height) as f64;
+                                (width, bg_height)
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        BackgroundSizeComputeMode::Size(_, _) => (width, height),
                     }
                 }
+                (Lpa::LengthPercentage(width), Lpa::Auto) => {
+                    let width = width.px();
+                    let height = match mode {
+                        BackgroundSizeComputeMode::Auto => container_h,
+                        BackgroundSizeComputeMode::Ratio(ratio) => width / ratio,
+                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => (width / bg_w) * bg_h,
+                    };
+                    (width, height)
+                }
+                (Lpa::Auto, Lpa::LengthPercentage(height)) => {
+                    let height = height.px();
+                    let width = match mode {
+                        BackgroundSizeComputeMode::Auto => container_w,
+                        BackgroundSizeComputeMode::Ratio(ratio) => height * ratio,
+                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => (height / bg_h) * bg_w,
+                    };
+                    (width, height)
+                }
+                (Lpa::Auto, Lpa::Auto) => match mode {
+                    BackgroundSizeComputeMode::Auto => (container_w, container_h),
+                    BackgroundSizeComputeMode::Ratio(ratio) => {
+                        if container_w < container_h {
+                            let height = container_w / ratio;
+                            (container_w, height)
+                        } else {
+                            let width = container_h * ratio;
+                            (width, container_h)
+                        }
+                    }
+                    BackgroundSizeComputeMode::Size(bg_w, bg_h) => (bg_w * scale, bg_h * scale),
+                },
             }
         }
-        BackgroundSize::Cover => {
-            if let (Some(bg_w), Some(bg_h)) = (bg_w, bg_h) {
+        BackgroundSize::Cover => match mode {
+            BackgroundSizeComputeMode::Auto => (container_w, container_h),
+            BackgroundSizeComputeMode::Ratio(ratio) => {
+                if container_w > container_h {
+                    let height = container_w / ratio;
+                    (container_w, height)
+                } else {
+                    let width = container_h * ratio;
+                    (width, container_h)
+                }
+            }
+            BackgroundSizeComputeMode::Size(bg_w, bg_h) => {
                 let x_ratio = container_w / bg_w;
                 let y_ratio = container_h / bg_h;
 
@@ -666,12 +704,20 @@ fn compute_background_size(
                 };
 
                 (bg_w * ratio, bg_h * ratio)
-            } else {
-                (container_w, container_h)
             }
-        }
-        BackgroundSize::Contain => {
-            if let (Some(bg_w), Some(bg_h)) = (bg_w, bg_h) {
+        },
+        BackgroundSize::Contain => match mode {
+            BackgroundSizeComputeMode::Auto => (container_w, container_h),
+            BackgroundSizeComputeMode::Ratio(ratio) => {
+                if container_w < container_h {
+                    let height = container_w / ratio;
+                    (container_w, height)
+                } else {
+                    let width = container_h * ratio;
+                    (width, container_h)
+                }
+            }
+            BackgroundSizeComputeMode::Size(bg_w, bg_h) => {
                 let x_ratio = container_w / bg_w;
                 let y_ratio = container_h / bg_h;
 
@@ -682,16 +728,17 @@ fn compute_background_size(
                 };
 
                 (bg_w * ratio, bg_h * ratio)
-            } else {
-                (container_w, container_h)
             }
-        }
+        },
     };
 
-    kurbo::Size {
-        width: width as f64,
-        height: height as f64,
-    }
+    (
+        offset,
+        kurbo::Size {
+            width: width as f64,
+            height: height as f64,
+        },
+    )
 }
 
 /// Ensure that the `resized_image` field has a correctly sized image
@@ -958,6 +1005,90 @@ impl ElementCx<'_> {
         scene.append(&fragment, Some(transform));
     }
 
+    #[cfg(feature = "svg")]
+    fn draw_svg_bg_image(&self, scene: &mut Scene, idx: usize) {
+        use style::{Zero as _, values::computed::Length};
+
+        let bg_image = self.element.background_images.get(idx);
+
+        let Some(Some(bg_image)) = bg_image.as_ref() else {
+            return;
+        };
+        let ImageData::Svg(svg) = &bg_image.image else {
+            return;
+        };
+
+        let background_origin = self
+            .style
+            .get_background()
+            .background_origin
+            .0
+            .get(idx)
+            .cloned()
+            .unwrap_or(StyloBackgroundOrigin::PaddingBox);
+
+        let origin_rect = match background_origin {
+            StyloBackgroundOrigin::BorderBox => self.frame.border_box,
+            StyloBackgroundOrigin::PaddingBox => self.frame.padding_box,
+            StyloBackgroundOrigin::ContentBox => self.frame.content_box,
+        };
+
+        let frame_w = origin_rect.width() as f32;
+        let frame_h = origin_rect.height() as f32;
+
+        let svg_size = svg.size();
+        let (bg_offset, bg_size) = compute_background_size(
+            &self.style,
+            frame_w,
+            frame_h,
+            idx,
+            BackgroundSizeComputeMode::Ratio(svg_size.width() / svg_size.height()),
+            self.scale as f32,
+        );
+        let bg_size = bg_size * self.scale;
+
+        let mut x_ratio = bg_size.width / svg_size.width() as f64;
+        let mut y_ratio = bg_size.height / svg_size.height() as f64;
+
+        if x_ratio < y_ratio {
+            y_ratio = x_ratio;
+        } else if x_ratio > y_ratio {
+            x_ratio = y_ratio;
+        }
+
+        let bg_pos_x = self
+            .style
+            .get_background()
+            .background_position_x
+            .0
+            .get(idx)
+            .cloned()
+            .unwrap_or(LengthPercentage::zero())
+            .resolve(Length::new(frame_w - (bg_size.width as f32)))
+            .px() as f64;
+        let bg_pos_y = self
+            .style
+            .get_background()
+            .background_position_y
+            .0
+            .get(idx)
+            .cloned()
+            .unwrap_or(LengthPercentage::zero())
+            .resolve(Length::new(frame_h - bg_size.height as f32))
+            .px() as f64;
+
+        let transform = self
+            .transform
+            .then_translate(Vec2 {
+                x: (origin_rect.x0 * self.scale) + bg_pos_x + bg_offset.x,
+                y: (origin_rect.y0 * self.scale) + bg_pos_y + bg_offset.y,
+            })
+            .pre_scale_non_uniform(x_ratio, y_ratio);
+
+        let fragment = vello_svg::render_tree(svg);
+        scene.append(&fragment, Some(transform));
+    }
+
     fn draw_image(&self, scene: &mut Scene) {
         let width = self.frame.content_box.width() as u32;
         let height = self.frame.content_box.height() as u32;
@@ -972,7 +1103,7 @@ impl ElementCx<'_> {
         }
     }
 
-    fn draw_bg_image(&self, scene: &mut Scene, idx: usize) {
+    fn draw_raster_bg_image(&self, scene: &mut Scene, idx: usize) {
         use style::{Zero as _, values::computed::Length};
 
         let bg_image = self.element.background_images.get(idx);
@@ -980,20 +1111,8 @@ impl ElementCx<'_> {
         let Some(Some(bg_image)) = bg_image.as_ref() else {
             return;
         };
-
-        let image_size = match &bg_image.image {
-            ImageData::Raster(image_data) => kurbo::Size::new(
-                image_data.image.width() as f64,
-                image_data.image.height() as f64,
-            ),
-            #[cfg(feature = "svg")]
-            ImageData::Svg(svg) => {
-                let size = svg.size();
-                kurbo::Size::new(size.width() as f64, size.height() as f64)
-            }
-            _ => {
-                return;
-            }
+        let ImageData::Raster(image_data) = &bg_image.image else {
+            return;
         };
 
         let background_origin = self
@@ -1024,19 +1143,23 @@ impl ElementCx<'_> {
         let frame_w = origin_rect.width() as f32;
         let frame_h = origin_rect.height() as f32;
 
-        let bg_size = compute_background_size(
+        let image_width = image_data.image.width() as f64;
+        let image_height = image_data.image.height() as f64;
+        let (_, bg_size) = compute_background_size(
             &self.style,
             frame_w,
             frame_h,
             idx,
-            Some((image_size.width / self.scale) as f32),
-            Some((image_size.height / self.scale) as f32),
+            BackgroundSizeComputeMode::Size(
+                (image_width / self.scale) as f32,
+                (image_height / self.scale) as f32,
+            ),
             self.scale as f32,
         );
         let bg_size = bg_size * self.scale;
 
-        let x_ratio = bg_size.width / image_size.width;
-        let y_ratio = bg_size.height / image_size.height;
+        let x_ratio = bg_size.width / image_width;
+        let y_ratio = bg_size.height / image_height;
 
         let bg_pos_x = self
             .style
@@ -1067,19 +1190,13 @@ impl ElementCx<'_> {
             })
             .pre_scale_non_uniform(x_ratio, y_ratio);
 
-        match &bg_image.image {
-            ImageData::Raster(image_data) => {
-                ensure_resized_image(image_data, bg_size.width as u32, bg_size.height as u32);
-                let resized_image = image_data.resized_image.borrow();
-                scene.draw_image(resized_image.as_ref().unwrap(), transform);
-            }
-            #[cfg(feature = "svg")]
-            ImageData::Svg(svg) => {
-                let fragment = vello_svg::render_tree(svg);
-                scene.append(&fragment, Some(transform));
-            }
-            ImageData::None => unreachable!(),
-        };
+        ensure_resized_image(
+            image_data,
+            image_data.image.width(),
+            image_data.image.height(),
+        );
+        let resized_image = image_data.resized_image.borrow();
+        scene.draw_image(resized_image.as_ref().unwrap(), transform);
     }
 
     fn stroke_devtools(&self, scene: &mut Scene) {
@@ -1137,7 +1254,9 @@ impl ElementCx<'_> {
                 }
                 Gradient(gradient) => self.draw_gradient_frame(scene, gradient, idx),
                 Url(_) => {
-                    self.draw_bg_image(scene, idx);
+                    self.draw_raster_bg_image(scene, idx);
+                    #[cfg(feature = "svg")]
+                    self.draw_svg_bg_image(scene, idx);
                 }
                 PaintWorklet(_) => todo!("Implement background drawing for Image::PaintWorklet"),
                 CrossFade(_) => todo!("Implement background drawing for Image::CrossFade"),
@@ -1170,13 +1289,12 @@ impl ElementCx<'_> {
         let frame_w = origin_rect.width() as f32;
         let frame_h = origin_rect.height() as f32;
 
-        let bg_size = compute_background_size(
+        let (_, bg_size) = compute_background_size(
             &self.style,
             frame_w,
             frame_h,
             idx,
-            None,
-            None,
+            BackgroundSizeComputeMode::Auto,
             self.scale as f32,
         );
 
@@ -2075,4 +2193,10 @@ impl<'a> std::ops::Deref for ElementCx<'a> {
     fn deref(&self) -> &Self::Target {
         self.context
     }
+}
+
+enum BackgroundSizeComputeMode {
+    Auto,
+    Ratio(f32),
+    Size(f32, f32),
 }
