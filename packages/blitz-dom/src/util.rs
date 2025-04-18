@@ -106,6 +106,16 @@ pub(crate) fn parse_svg(source: &[u8]) -> Result<usvg::Tree, usvg::Error> {
     Ok(tree)
 }
 
+#[cfg(feature = "svg")]
+pub(crate) fn parse_svg_to_text(source: &[u8]) -> Result<String, usvg::Error> {
+    if source.starts_with(&[0x1f, 0x8b]) {
+        let data = usvg::decompress_svgz(&source)?;
+        String::from_utf8(data).map_err(|_| usvg::Error::NotAnUtf8Str)
+    } else {
+        String::from_utf8(source.to_vec()).map_err(|_| usvg::Error::NotAnUtf8Str)
+    }
+}
+
 pub trait ToColorColor {
     /// Converts a color into the `AlphaColor<Srgb>` type from the `color` crate
     fn as_color_color(&self) -> Color;

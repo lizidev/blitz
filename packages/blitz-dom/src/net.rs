@@ -26,7 +26,7 @@ use crate::util::ImageType;
 pub enum Resource {
     Image(usize, ImageType, u32, u32, Arc<Vec<u8>>),
     #[cfg(feature = "svg")]
-    Svg(usize, ImageType, Box<usvg::Tree>),
+    Svg(usize, ImageType, String),
     Css(usize, DocumentStyleSheet),
     Font(Bytes),
     None,
@@ -326,9 +326,9 @@ impl NetHandler for ImageHandler {
 
         #[cfg(feature = "svg")]
         {
-            use crate::util::parse_svg;
-            if let Ok(tree) = parse_svg(&bytes) {
-                callback.call(doc_id, Ok(Resource::Svg(self.0, self.1, Box::new(tree))));
+            use crate::util::parse_svg_to_text;
+            if let Ok(text) = parse_svg_to_text(&bytes) {
+                callback.call(doc_id, Ok(Resource::Svg(self.0, self.1, text)));
                 return;
             }
         }

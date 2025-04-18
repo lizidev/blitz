@@ -35,6 +35,7 @@ use taffy::{
 use url::Url;
 
 use crate::layout::table::TableContext;
+use crate::util::FONT_DB;
 use blitz_traits::{BlitzMouseButtonEvent, DomEventData, HitResult};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -441,7 +442,7 @@ impl ElementNodeData {
     }
 
     #[cfg(feature = "svg")]
-    pub fn svg_data(&self) -> Option<&usvg::Tree> {
+    pub fn svg_data(&self) -> Option<&SvgImageData> {
         match self.image_data()? {
             ImageData::Svg(data) => Some(data),
             _ => None,
@@ -449,7 +450,7 @@ impl ElementNodeData {
     }
 
     #[cfg(feature = "svg")]
-    pub fn svg_data_mut(&mut self) -> Option<&mut usvg::Tree> {
+    pub fn svg_data_mut(&mut self) -> Option<&mut SvgImageData> {
         match self.image_data_mut()? {
             ImageData::Svg(data) => Some(data),
             _ => None,
@@ -557,17 +558,48 @@ impl RasterImageData {
     }
 }
 
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone)]
+pub struct SvgImageData {
+    /// The raw svg data
+    text: String,
+    /// The resized image data (for the most recent size it's been displayed at)
+    resized_svg: RefCell<Option<Arc<usvg::Tree>>>,
+}
+
+impl SvgImageData {
+    pub fn new(text: String) -> Self {
+        Self {
+            text,
+            resized_svg: Default::default(),
+        }
+    }
+
+    pub fn get(&self) -> Option<Arc<usvg::Tree>> {
+        let options = usvg::Options {
+            fontdb: Arc::clone(&*FONT_DB),
+            ..Default::default()
+        };
+
+        let tree = usvg::Tree::from_str(&self.text, &options).ok()?;
+        let tree = Arc::new(tree);
+        *self.resized_svg.borrow_mut() = Some(tree.clone());
+        Some(tree)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ImageData {
     Raster(RasterImageData),
     #[cfg(feature = "svg")]
-    Svg(Box<usvg::Tree>),
+    Svg(SvgImageData),
     None,
 }
+
 #[cfg(feature = "svg")]
-impl From<usvg::Tree> for ImageData {
-    fn from(value: usvg::Tree) -> Self {
-        Self::Svg(Box::new(value))
+impl From<SvgImageData> for ImageData {
+    fn from(value: SvgImageData) -> Self {
+        Self::Svg(value)
     }
 }
 

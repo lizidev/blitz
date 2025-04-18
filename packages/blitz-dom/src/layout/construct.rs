@@ -20,8 +20,8 @@ use style::{
 use crate::{
     BaseDocument, ElementNodeData, Node, NodeData,
     node::{
-        ListItemLayout, ListItemLayoutPosition, Marker, NodeKind, NodeSpecificData, TextBrush,
-        TextInputData, TextLayout,
+        ListItemLayout, ListItemLayoutPosition, Marker, NodeKind, NodeSpecificData, SvgImageData,
+        TextBrush, TextInputData, TextLayout,
     },
     stylo_to_parley,
 };
@@ -93,20 +93,12 @@ pub(crate) fn collect_layout_children(
                     outer_html.replace("<svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"");
             }
 
-            match crate::util::parse_svg(outer_html.as_bytes()) {
-                Ok(svg) => {
-                    doc.get_node_mut(container_node_id)
-                        .unwrap()
-                        .element_data_mut()
-                        .unwrap()
-                        .node_specific_data = NodeSpecificData::Image(Box::new(svg.into()));
-                }
-                Err(err) => {
-                    println!("{} SVG parse failed", container_node_id);
-                    println!("{}", outer_html);
-                    dbg!(err);
-                }
-            };
+            doc.get_node_mut(container_node_id)
+                .unwrap()
+                .element_data_mut()
+                .unwrap()
+                .node_specific_data =
+                NodeSpecificData::Image(Box::new(SvgImageData::new(outer_html).into()));
             return;
         }
 

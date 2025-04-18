@@ -1,6 +1,6 @@
 use crate::events::handle_event;
 use crate::layout::construct::collect_layout_children;
-use crate::node::{ImageData, NodeSpecificData, RasterImageData, Status, TextBrush};
+use crate::node::{ImageData, NodeSpecificData, RasterImageData, Status, SvgImageData, TextBrush};
 use crate::stylo_to_cursor_icon::stylo_to_cursor_icon;
 use crate::util::{ImageType, resolve_url};
 use crate::{ElementNodeData, Node, NodeData, TextNodeData};
@@ -603,7 +603,9 @@ impl BaseDocument {
                 match kind {
                     ImageType::Image => {
                         node.element_data_mut().unwrap().node_specific_data =
-                            NodeSpecificData::Image(Box::new(ImageData::Svg(tree)));
+                            NodeSpecificData::Image(Box::new(ImageData::Svg(SvgImageData::new(
+                                tree,
+                            ))));
 
                         // Clear layout cache
                         node.cache.clear();
@@ -614,7 +616,7 @@ impl BaseDocument {
                             .and_then(|el| el.background_images.get_mut(idx))
                         {
                             bg_image.status = Status::Ok;
-                            bg_image.image = ImageData::Svg(tree);
+                            bg_image.image = ImageData::Svg(SvgImageData::new(tree));
                         }
                     }
                 }
