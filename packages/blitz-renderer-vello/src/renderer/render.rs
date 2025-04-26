@@ -53,7 +53,7 @@ use style::values::generics::image::{
 };
 use style::values::specified::percentage::ToPercentage;
 use taffy::Layout;
-use vello::kurbo::{self, BezPath, Cap, Circle, Join};
+use vello::kurbo::{self, BezPath, Cap, Circle, Join, Size};
 use vello::peniko::Gradient;
 use vello::{
     Scene,
@@ -1027,6 +1027,7 @@ impl ElementCx<'_> {
     }
 
     fn draw_raster_bg_image(&self, scene: &mut Scene, idx: usize) {
+        use BackgroundRepeatKeyword::*;
         use style::{Zero as _, values::computed::Length};
 
         let bg_image = self.element.background_images.get(idx);
@@ -1053,8 +1054,8 @@ impl ElementCx<'_> {
             StyloBackgroundOrigin::ContentBox => self.frame.content_box,
         };
 
-        let frame_w = origin_rect.width() as f32;
-        let frame_h = origin_rect.height() as f32;
+        let frame_w = (origin_rect.width() / self.scale) as f32;
+        let frame_h = (origin_rect.height() / self.scale) as f32;
 
         let image_width = image_data.width as f64;
         let image_height = image_data.height as f64;
@@ -1063,16 +1064,13 @@ impl ElementCx<'_> {
             frame_w,
             frame_h,
             idx,
-            BackgroundSizeComputeMode::Size(
-                (image_width / self.scale) as f32,
-                (image_height / self.scale) as f32,
-            ),
-            self.scale as f32,
+            BackgroundSizeComputeMode::Size(image_width as f32, image_height as f32),
+            1.0,
         );
-        let bg_size = bg_size * self.scale;
+        // let bg_size = bg_size * self.scale;
 
-        let x_ratio = bg_size.width / image_width;
-        let y_ratio = bg_size.height / image_height;
+        let x_ratio = bg_size.width * self.scale / image_width;
+        let y_ratio = bg_size.height * self.scale / image_height;
 
         let bg_pos_x = bg_styles
             .background_position_x
@@ -1080,7 +1078,7 @@ impl ElementCx<'_> {
             .get(idx)
             .cloned()
             .unwrap_or(LengthPercentage::zero())
-            .resolve(Length::new(frame_w - (bg_size.width as f32)))
+            .resolve(Length::new(frame_w - bg_size.width as f32))
             .px() as f64;
         let bg_pos_y = bg_styles
             .background_position_y
@@ -1091,36 +1089,108 @@ impl ElementCx<'_> {
             .resolve(Length::new(frame_h - bg_size.height as f32))
             .px() as f64;
 
-        let transform = self
-            .transform
-            .then_translate(Vec2 {
-                x: (origin_rect.x0 * self.scale) + bg_pos_x,
-                y: (origin_rect.y0 * self.scale) + bg_pos_y,
-            })
-            .pre_scale_non_uniform(x_ratio, y_ratio);
-
         let BackgroundRepeat(repeat_x, repeat_y) = bg_styles
             .background_repeat
             .0
             .get(idx)
             .cloned()
-            .unwrap_or(BackgroundRepeat(
-                BackgroundRepeatKeyword::Repeat,
-                BackgroundRepeatKeyword::Repeat,
-            ));
+            .unwrap_or(BackgroundRepeat::repeat());
 
-        if repeat_x == BackgroundRepeatKeyword::Repeat
-            && repeat_y == BackgroundRepeatKeyword::Repeat
-        {
-            scene.fill(
-                peniko::Fill::NonZero,
-                transform,
-                &to_peniko_image(image_data),
-                None,
-                &origin_rect.to_path(0.1),
-            );
-        } else {
-            scene.draw_image(&to_peniko_image(image_data), transform);
+        #[inline]
+        fn extend(offset: f64, length: f64) -> f64 {
+            let extend_length = offset % length;
+            if extend_length > 0.0 {
+                length - extend_length
+            } else {
+                -extend_length
+            }
+        }
+
+        match (repeat_x, repeat_y) {
+            (Repeat, Repeat) => {
+                let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
+                let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
+
+                let transform = self
+                    .transform
+                    .then_translate(Vec2 {
+                        x: origin_rect.x0 - extend_width,
+                        y: origin_rect.y0 - extend_height,
+                    })
+                    .pre_scale_non_uniform(x_ratio, y_ratio);
+
+                let origin_rect = origin_rect.with_size(Size::new(
+                    (origin_rect.width() + extend_width) / x_ratio,
+                    (origin_rect.height() + extend_height) / y_ratio,
+                ));
+
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    transform,
+                    &to_peniko_image(image_data),
+                    None,
+                    &origin_rect.to_path(0.1),
+                );
+            }
+            (Repeat, NoRepeat) => {
+                let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
+
+                let transform = self
+                    .transform
+                    .then_translate(Vec2 {
+                        x: origin_rect.x0 - extend_width,
+                        y: origin_rect.y0 + bg_pos_y,
+                    })
+                    .pre_scale_non_uniform(x_ratio, y_ratio);
+
+                let origin_rect = origin_rect.with_size(Size::new(
+                    (origin_rect.width() + extend_width) / x_ratio,
+                    image_height,
+                ));
+
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    transform,
+                    &to_peniko_image(image_data),
+                    None,
+                    &origin_rect.to_path(0.1),
+                );
+            }
+            (NoRepeat, Repeat) => {
+                let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
+
+                let transform = self
+                    .transform
+                    .then_translate(Vec2 {
+                        x: origin_rect.x0 + bg_pos_x,
+                        y: origin_rect.y0 - extend_height,
+                    })
+                    .pre_scale_non_uniform(x_ratio, y_ratio);
+
+                let origin_rect = origin_rect.with_size(Size::new(
+                    image_width,
+                    (origin_rect.height() + extend_height) / y_ratio,
+                ));
+
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    transform,
+                    &to_peniko_image(image_data),
+                    None,
+                    &origin_rect.to_path(0.1),
+                );
+            }
+            (_, _) => {
+                let transform = self
+                    .transform
+                    .then_translate(Vec2 {
+                        x: (origin_rect.x0 + bg_pos_x) * self.scale,
+                        y: (origin_rect.y0 + bg_pos_y) * self.scale,
+                    })
+                    .pre_scale_non_uniform(x_ratio, y_ratio);
+
+                scene.draw_image(&to_peniko_image(image_data), transform);
+            }
         }
     }
 
