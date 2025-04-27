@@ -1067,7 +1067,6 @@ impl ElementCx<'_> {
             BackgroundSizeComputeMode::Size(image_width as f32, image_height as f32),
             1.0,
         );
-        // let bg_size = bg_size * self.scale;
 
         let x_ratio = bg_size.width * self.scale / image_width;
         let y_ratio = bg_size.height * self.scale / image_height;
@@ -1179,6 +1178,148 @@ impl ElementCx<'_> {
                     None,
                     &origin_rect.to_path(0.1),
                 );
+            }
+            (Space, Space) => {
+                let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
+                let frame_w = frame_w as f64;
+                let frame_h = frame_h as f64;
+
+                let width_modulo = frame_w % bg_size.width;
+                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_gap = if width_count > 1 {
+                    width_modulo / (width_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.width;
+
+                let height_modulo = frame_h % bg_size.height;
+                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_gap = if height_count > 1 {
+                    height_modulo / (height_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.height;
+
+                for hc in 0..height_count {
+                    for wc in 0..width_count {
+                        let transform = transform.then_translate(Vec2 {
+                            x: (origin_rect.x0 + wc as f64 * width_gap) * self.scale,
+                            y: (origin_rect.y0 + hc as f64 * height_gap) * self.scale,
+                        });
+
+                        scene.draw_image(&to_peniko_image(image_data), transform);
+                    }
+                }
+            }
+            (Space, NoRepeat) => {
+                let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
+                let frame_w = frame_w as f64;
+
+                let width_modulo = frame_w % bg_size.width;
+                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_gap = if width_count > 1 {
+                    width_modulo / (width_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.width;
+
+                for wc in 0..width_count {
+                    let transform = transform.then_translate(Vec2 {
+                        x: (origin_rect.x0 + wc as f64 * width_gap) * self.scale,
+                        y: (origin_rect.y0 + bg_pos_y) * self.scale,
+                    });
+
+                    scene.draw_image(&to_peniko_image(image_data), transform);
+                }
+            }
+            (Space, Repeat) => {
+                let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
+                let frame_w = frame_w as f64;
+
+                let width_modulo = frame_w % bg_size.width;
+                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_gap = if width_count > 1 {
+                    width_modulo / (width_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.width;
+
+                let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
+
+                let origin_rect = origin_rect.with_size(Size::new(
+                    image_width,
+                    (origin_rect.height() + extend_height) / y_ratio,
+                ));
+
+                for wc in 0..width_count {
+                    let transform = transform.then_translate(Vec2 {
+                        x: (origin_rect.x0 + wc as f64 * width_gap) * self.scale,
+                        y: origin_rect.y0  - extend_height,
+                    });
+
+                    scene.fill(
+                        peniko::Fill::NonZero,
+                        transform,
+                        &to_peniko_image(image_data),
+                        None,
+                        &origin_rect.to_path(0.1),
+                    );
+                }
+            }
+            (Repeat, Space) => {
+                let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
+                let frame_h = frame_h as f64;
+
+                let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
+
+                let height_modulo = frame_h % bg_size.height;
+                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_gap = if height_count > 1 {
+                    height_modulo / (height_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.height;
+
+                let origin_rect = origin_rect.with_size(Size::new(
+                    (origin_rect.width() + extend_width) / x_ratio,
+                    image_height,
+                ));
+
+                for hc in 0..height_count {
+                    let transform = transform.then_translate(Vec2 {
+                        x: origin_rect.x0 - extend_width,
+                        y: (origin_rect.y0 + hc as f64 * height_gap) * self.scale,
+                    });
+
+                    scene.fill(
+                        peniko::Fill::NonZero,
+                        transform,
+                        &to_peniko_image(image_data),
+                        None,
+                        &origin_rect.to_path(0.1),
+                    );
+                }
+            }
+            (NoRepeat, Space) => {
+                let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
+                let frame_h = frame_h as f64;
+
+                let height_modulo = frame_h % bg_size.height;
+                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_gap = if height_count > 1 {
+                    height_modulo / (height_count - 1) as f64
+                } else {
+                    0.0
+                } + bg_size.height;
+
+                for hc in 0..height_count {
+                    let transform = transform.then_translate(Vec2 {
+                        x: (origin_rect.x0 + bg_pos_x) * self.scale,
+                        y: (origin_rect.y0 + hc as f64 * height_gap) * self.scale,
+                    });
+
+                    scene.draw_image(&to_peniko_image(image_data), transform);
+                }
             }
             (_, _) => {
                 let transform = self
