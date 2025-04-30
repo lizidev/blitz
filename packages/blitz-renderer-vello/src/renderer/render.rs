@@ -1068,9 +1068,6 @@ impl ElementCx<'_> {
             1.0,
         );
 
-        let x_ratio = bg_size.width * self.scale / image_width;
-        let y_ratio = bg_size.height * self.scale / image_height;
-
         let bg_pos_x = bg_styles
             .background_position_x
             .0
@@ -1095,7 +1092,29 @@ impl ElementCx<'_> {
             .cloned()
             .unwrap_or(BackgroundRepeat::repeat());
 
-        #[inline]
+        let bg_size = if matches!(repeat_x, Round) && matches!(repeat_y, Round) {
+            let count = (frame_w as f64 / bg_size.width).round();
+            let width = frame_w as f64 / count;
+
+            let count = (frame_h as f64 / bg_size.height).round();
+            let height = frame_h as f64 / count;
+
+            Size::new(width, height)
+        } else if matches!(repeat_x, Round) {
+            let count = (frame_w as f64 / bg_size.width).round();
+            let width = frame_w as f64 / count;
+            Size::new(width, bg_size.height / bg_size.width * width)
+        } else if matches!(repeat_y, Round) {
+            let count = (frame_h as f64 / bg_size.height).round();
+            let height = frame_h as f64 / count;
+            Size::new( bg_size.width / bg_size.height * height, height)
+        } else {
+            bg_size
+        };
+
+        let x_ratio = bg_size.width * self.scale / image_width;
+        let y_ratio = bg_size.height * self.scale / image_height;
+
         fn extend(offset: f64, length: f64) -> f64 {
             let extend_length = offset % length;
             if extend_length > 0.0 {
@@ -1106,7 +1125,7 @@ impl ElementCx<'_> {
         }
 
         match (repeat_x, repeat_y) {
-            (Repeat, Repeat) => {
+            (Round, Round) | (Repeat, Round) | (Round, Repeat) | (Repeat, Repeat) => {
                 let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
                 let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
 
@@ -1131,7 +1150,7 @@ impl ElementCx<'_> {
                     &origin_rect.to_path(0.1),
                 );
             }
-            (Repeat, NoRepeat) => {
+            (Round, NoRepeat) | (Repeat, NoRepeat) => {
                 let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
 
                 let transform = self
@@ -1155,7 +1174,7 @@ impl ElementCx<'_> {
                     &origin_rect.to_path(0.1),
                 );
             }
-            (NoRepeat, Repeat) => {
+            (NoRepeat, Round) | (NoRepeat, Repeat) => {
                 let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
 
                 let transform = self
@@ -1232,7 +1251,7 @@ impl ElementCx<'_> {
                     scene.draw_image(&to_peniko_image(image_data), transform);
                 }
             }
-            (Space, Repeat) => {
+            (Space, Round) | (Space, Repeat) => {
                 let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
                 let frame_w = frame_w as f64;
 
@@ -1254,7 +1273,7 @@ impl ElementCx<'_> {
                 for wc in 0..width_count {
                     let transform = transform.then_translate(Vec2 {
                         x: (origin_rect.x0 + wc as f64 * width_gap) * self.scale,
-                        y: origin_rect.y0  - extend_height,
+                        y: origin_rect.y0 - extend_height,
                     });
 
                     scene.fill(
@@ -1266,7 +1285,7 @@ impl ElementCx<'_> {
                     );
                 }
             }
-            (Repeat, Space) => {
+            (Round, Space) | (Repeat, Space) => {
                 let transform = self.transform.pre_scale_non_uniform(x_ratio, y_ratio);
                 let frame_h = frame_h as f64;
 
@@ -1321,7 +1340,7 @@ impl ElementCx<'_> {
                     scene.draw_image(&to_peniko_image(image_data), transform);
                 }
             }
-            (_, _) => {
+            (NoRepeat, NoRepeat) => {
                 let transform = self
                     .transform
                     .then_translate(Vec2 {
