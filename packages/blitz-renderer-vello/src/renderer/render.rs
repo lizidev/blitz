@@ -1204,7 +1204,7 @@ impl ElementCx<'_> {
                 let frame_h = frame_h as f64;
 
                 let width_modulo = frame_w % bg_size.width;
-                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_count = (((frame_w - width_modulo) / bg_size.width) as u32).max(1);
                 let width_gap = if width_count > 1 {
                     width_modulo / (width_count - 1) as f64
                 } else {
@@ -1212,12 +1212,28 @@ impl ElementCx<'_> {
                 } + bg_size.width;
 
                 let height_modulo = frame_h % bg_size.height;
-                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_count = (((frame_h - height_modulo) / bg_size.height) as u32).max(1);
                 let height_gap = if height_count > 1 {
                     height_modulo / (height_count - 1) as f64
                 } else {
                     0.0
                 } + bg_size.height;
+
+                let transform = match (width_count, height_count) {
+                    (1, 1) => transform.then_translate(Vec2 {
+                        x: bg_pos_x,
+                        y: bg_pos_y,
+                    }),
+                    (1, _) => transform.then_translate(Vec2 {
+                        x: bg_pos_x,
+                        y: 0.0,
+                    }),
+                    (_, 1) => transform.then_translate(Vec2 {
+                        x: 0.0,
+                        y: bg_pos_y,
+                    }),
+                    (_, _) => transform,
+                };
 
                 for hc in 0..height_count {
                     for wc in 0..width_count {
@@ -1235,12 +1251,21 @@ impl ElementCx<'_> {
                 let frame_w = frame_w as f64;
 
                 let width_modulo = frame_w % bg_size.width;
-                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_count = (((frame_w - width_modulo) / bg_size.width) as u32).max(1);
                 let width_gap = if width_count > 1 {
                     width_modulo / (width_count - 1) as f64
                 } else {
                     0.0
                 } + bg_size.width;
+
+                let transform = if width_count == 1 {
+                    transform.then_translate(Vec2 {
+                        x: bg_pos_x,
+                        y: 0.0,
+                    })
+                } else {
+                    transform
+                };
 
                 for wc in 0..width_count {
                     let transform = transform.then_translate(Vec2 {
@@ -1256,12 +1281,21 @@ impl ElementCx<'_> {
                 let frame_w = frame_w as f64;
 
                 let width_modulo = frame_w % bg_size.width;
-                let width_count = ((frame_w - width_modulo) / bg_size.width) as u32;
+                let width_count = (((frame_w - width_modulo) / bg_size.width) as u32).max(1);
                 let width_gap = if width_count > 1 {
                     width_modulo / (width_count - 1) as f64
                 } else {
                     0.0
                 } + bg_size.width;
+
+                let transform = if width_count == 1 {
+                    transform.then_translate(Vec2 {
+                        x: bg_pos_x,
+                        y: 0.0,
+                    })
+                } else {
+                    transform
+                };
 
                 let extend_height = extend(bg_pos_y, bg_size.height) * self.scale;
 
@@ -1292,12 +1326,21 @@ impl ElementCx<'_> {
                 let extend_width = extend(bg_pos_x, bg_size.width) * self.scale;
 
                 let height_modulo = frame_h % bg_size.height;
-                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_count = (((frame_h - height_modulo) / bg_size.height) as u32).max(1);
                 let height_gap = if height_count > 1 {
                     height_modulo / (height_count - 1) as f64
                 } else {
                     0.0
                 } + bg_size.height;
+
+                let transform = if height_count == 1 {
+                    transform.then_translate(Vec2 {
+                        x: 0.0,
+                        y: bg_pos_y,
+                    })
+                } else {
+                    transform
+                };
 
                 let origin_rect = origin_rect.with_size(Size::new(
                     (origin_rect.width() + extend_width) / x_ratio,
@@ -1324,12 +1367,21 @@ impl ElementCx<'_> {
                 let frame_h = frame_h as f64;
 
                 let height_modulo = frame_h % bg_size.height;
-                let height_count = ((frame_h - height_modulo) / bg_size.height) as u32;
+                let height_count = (((frame_h - height_modulo) / bg_size.height) as u32).max(1);
                 let height_gap = if height_count > 1 {
                     height_modulo / (height_count - 1) as f64
                 } else {
                     0.0
                 } + bg_size.height;
+
+                let transform = if height_count == 1 {
+                    transform.then_translate(Vec2 {
+                        x: 0.0,
+                        y: bg_pos_y,
+                    })
+                } else {
+                    transform
+                };
 
                 for hc in 0..height_count {
                     let transform = transform.then_translate(Vec2 {
