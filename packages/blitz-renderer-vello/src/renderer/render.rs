@@ -641,7 +641,7 @@ fn compute_background_size(
                     let width = width.px();
                     let height = match mode {
                         BackgroundSizeComputeMode::Auto => container_h,
-                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => (width / bg_w) * bg_h,
+                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => bg_h / bg_w * width,
                     };
                     (width, height)
                 }
@@ -649,7 +649,7 @@ fn compute_background_size(
                     let height = height.px();
                     let width = match mode {
                         BackgroundSizeComputeMode::Auto => container_w,
-                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => (height / bg_h) * bg_w,
+                        BackgroundSizeComputeMode::Size(bg_w, bg_h) => bg_w / bg_h * height,
                     };
                     (width, height)
                 }
@@ -1103,11 +1103,11 @@ impl ElementCx<'_> {
         } else if matches!(repeat_x, Round) {
             let count = (frame_w as f64 / bg_size.width).round();
             let width = frame_w as f64 / count;
-            Size::new(width, bg_size.height / bg_size.width * width)
+            Size::new(width, bg_size.height)
         } else if matches!(repeat_y, Round) {
             let count = (frame_h as f64 / bg_size.height).round();
             let height = frame_h as f64 / count;
-            Size::new( bg_size.width / bg_size.height * height, height)
+            Size::new(bg_size.width, height)
         } else {
             bg_size
         };
