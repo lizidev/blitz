@@ -149,6 +149,8 @@ pub struct BaseDocument {
 
     pub changed: HashSet<usize>,
 
+    pub on_environment_change: HashSet<usize>,
+
     /// A map from control node ID's to their associated forms node ID's
     pub controls_to_form: HashMap<usize, usize>,
 
@@ -237,6 +239,7 @@ impl BaseDocument {
             focus_node_id: None,
             active_node_id: None,
             changed: HashSet::new(),
+            on_environment_change: HashSet::new(),
             controls_to_form: HashMap::new(),
             net_provider: Arc::new(DummyNetProvider),
             navigation_provider: Arc::new(DummyNavigationProvider {}),
@@ -395,6 +398,8 @@ impl BaseDocument {
 
         // Mark the new node as changed.
         self.changed.insert(id);
+        self.on_environment_change.insert(id);
+
         id
     }
 
@@ -606,10 +611,13 @@ impl BaseDocument {
 
                 match kind {
                     ImageType::Image => {
-                        node.element_data_mut().unwrap().node_specific_data =
-                            NodeSpecificData::Image(Box::new(ImageData::Raster(
-                                RasterImageData::new(width, height, image_data),
+                        if let NodeSpecificData::Image(context) =
+                            &mut node.element_data_mut().unwrap().node_specific_data
+                        {
+                            context.data = Some(ImageData::Raster(RasterImageData::new(
+                                width, height, image_data,
                             )));
+                        }
 
                         // Clear layout cache
                         node.cache.clear();
@@ -632,8 +640,11 @@ impl BaseDocument {
 
                 match kind {
                     ImageType::Image => {
-                        node.element_data_mut().unwrap().node_specific_data =
-                            NodeSpecificData::Image(Box::new(ImageData::Svg(tree)));
+                        if let NodeSpecificData::Image(context) =
+                            &mut node.element_data_mut().unwrap().node_specific_data
+                        {
+                            context.data = Some(ImageData::Svg(tree));
+                        }
 
                         // Clear layout cache
                         node.cache.clear();
@@ -1006,6 +1017,7 @@ impl BaseDocument {
     pub fn set_viewport(&mut self, viewport: Viewport) {
         self.viewport = viewport;
         self.set_stylist_device(make_device(&self.viewport));
+        self.environment_changes();
     }
 
     pub fn get_viewport(&self) -> Viewport {
@@ -1254,6 +1266,23 @@ impl BaseDocument {
 
         let media_list = MediaList::parse(&context, &mut parser);
         media_list.evaluate(self.stylist.device(), quirks_mode)
+    }
+
+    fn is_img_node(&self, node_id: usize) -> bool {
+        let Some(node) = self.get_node(node_id) else {
+            return false;
+        };
+
+        node.data.is_element_with_tag_name(&local_name!("img"))
+    }
+
+    fn environment_changes(&mut self) {
+        let on_environment_change = self.on_environment_change.clone();
+        for node_id in on_environment_change.iter() {
+            if self.is_img_node(*node_id) {
+                self.environment_changes_with_image(*node_id);
+            }
+        }
     }
 }
 

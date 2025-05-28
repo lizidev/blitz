@@ -1,4 +1,4 @@
-use super::Node;
+use super::{ImageContext, Node, NodeSpecificData};
 use crate::{BaseDocument, net::ImageHandler, util::ImageType};
 use blitz_traits::net::Request;
 use markup5ever::local_name;
@@ -21,11 +21,37 @@ impl BaseDocument {
         &self.nodes[id]
     }
 
-    pub(crate) fn load_image(&self, target_id: usize) {
-        let Some(raw_src) = self.select_image_source(target_id) else {
+    #[inline]
+    fn is_picture_node(&self, node_id: usize) -> bool {
+        self.nodes[node_id]
+            .data
+            .is_element_with_tag_name(&local_name!("picture"))
+    }
+
+    pub(crate) fn load_image(&mut self, target_id: usize) {
+        let Some(selected_source) = self.select_image_source(target_id) else {
             return;
         };
-        let src = self.resolve_url(&raw_src);
+
+        let src = self.resolve_url(&selected_source.url);
+
+        let node = self.get_node_mut(target_id).unwrap();
+        let Some(data) = node.element_data_mut() else {
+            return;
+        };
+
+        if let NodeSpecificData::Image(context) = &mut data.node_specific_data {
+            if context.selected_source.url == selected_source.url {
+                return;
+            } else {
+                context.selected_source = selected_source;
+            }
+        } else if let NodeSpecificData::None = data.node_specific_data {
+            data.node_specific_data =
+                NodeSpecificData::Image(Box::new(ImageContext::new(selected_source)));
+        } else {
+            return;
+        }
         self.net_provider.fetch(
             self.id(),
             Request::get(src),
@@ -33,10 +59,35 @@ impl BaseDocument {
         );
     }
 
+    // https://html.spec.whatwg.org/multipage/images.html#reacting-to-environment-changes
+    pub(crate) fn environment_changes_with_image(&mut self, node_id: usize) {
+        if !self.use_srcset_or_picture(node_id) {
+            return;
+        }
+
+        self.load_image(node_id);
+    }
+
+    fn use_srcset_or_picture(&self, node_id: usize) -> bool {
+        let node = self.node(node_id);
+
+        if node.attr(local_name!("srcset")).is_some() {
+            return true;
+        }
+
+        if let Some(parent_id) = node.parent {
+            if self.is_picture_node(parent_id) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Selecting an image source
     ///
     /// https://html.spec.whatwg.org/multipage/#select-an-image-source
-    fn select_image_source(&self, el_id: usize) -> Option<String> {
+    fn select_image_source(&self, el_id: usize) -> Option<ImageSource> {
         let source_set = self.get_source_set(el_id)?;
         let len = source_set.image_sources.len();
 
@@ -49,31 +100,22 @@ impl BaseDocument {
         // of the entries in sourceSet have the same associated pixel density descriptor as
         // an earlier entry.
         let mut seen = HashSet::new();
-        let image_sources = source_set
-            .image_sources
-            .iter()
-            .filter(|image_source| {
-                let density = image_source.descriptor.density.unwrap();
-                seen.insert(density.to_bits())
-            })
-            .collect::<Vec<_>>();
+        let mut image_sources = source_set.image_sources.iter().filter(|image_source| {
+            let density = image_source.descriptor.density.unwrap();
+            seen.insert(density.to_bits())
+        });
 
         let device_pixel_ratio = self.viewport.scale_f64();
 
         // 2.2 In an implementation-defined manner, choose one image source from sourceSet. Let this be selectedSource.
-        let url = image_sources
-            .iter()
-            .find_map(|image_source| {
+        let image_source = image_sources
+            .find(|image_source| {
                 let density = image_source.descriptor.density.unwrap();
-                if density >= device_pixel_ratio {
-                    Some(image_source.url.clone())
-                } else {
-                    None
-                }
+                density >= device_pixel_ratio
             })
-            .unwrap_or_else(|| image_sources.last().unwrap().url.clone());
+            .unwrap_or_else(|| image_sources.last().unwrap());
 
-        Some(url)
+        Some(image_source.clone())
     }
 
     /// https://html.spec.whatwg.org/multipage/#update-the-source-set
@@ -310,8 +352,8 @@ impl ImageSourceList {
 /// Srcset attributes
 ///
 /// https://html.spec.whatwg.org/multipage/images.html#srcset-attributes
-#[derive(Debug, PartialEq)]
-struct ImageSource {
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct ImageSource {
     pub url: String,
     pub descriptor: Descriptor,
 }
@@ -339,8 +381,8 @@ impl ImageSource {
     }
 }
 
-#[derive(Debug, Default, PartialEq)]
-struct Descriptor {
+#[derive(Debug, Default, PartialEq, Clone)]
+pub(crate) struct Descriptor {
     pub width: Option<u32>,
     pub density: Option<f64>,
 }
